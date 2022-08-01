@@ -1,5 +1,7 @@
 # TensorFlow and tf.keras
 import tensorflow as tf
+from keras import Sequential
+from keras.layers import Dense, Flatten, MaxPool2D, Dropout, Conv2D
 from tensorflow import keras
 
 # Helper libraries
@@ -50,31 +52,57 @@ def plot_value_array(i, predictions_array, true_label):
 probability_model = None
 
 
-def train():
+def train(train_images, train_labels, epoch_num):
     # print(tf.__version__)
 
-    train_images, train_labels = DataGenerator.gen_dataset(10000)
     train_images = np.array(train_images)
     train_labels = np.array(train_labels)
+    train_images = train_images.reshape((train_images.shape[0], train_images.shape[1], train_images.shape[2], 1))
 
-    # (train_images, train_labels), (test_images, test_labels) = example
+    model = Sequential()
 
-    model = keras.Sequential([
-        keras.layers.Flatten(input_shape=(util.TARGET_HEIGHT, util.TARGET_WIDTH, 1)),
-        keras.layers.Dense(1024, activation='relu'),
-        keras.layers.Dense(300, activation='relu'),
-        keras.layers.Dense(len(util.class_names))
-    ])
+    # 卷积层
+    model.add(
+        Conv2D(
+            filters=256,
+            kernel_size=(5, 5),
+            padding='same',  # 保证卷积核大小，不够补零
+            input_shape=(util.TARGET_HEIGHT, util.TARGET_WIDTH, 1),
+            activation='relu'))
+    # 池化层
+    model.add(MaxPool2D(pool_size=(3, 3)))
+    model.add(Dropout(0.25))
 
-    model.compile(optimizer='adam',
-                  loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-                  metrics=['accuracy'])
+    # 卷积层
+    model.add(
+        Conv2D(filters=256, kernel_size=(5, 5), padding='same', activation='relu'))
+    model.add(
+        Conv2D(filters=256, kernel_size=(5, 5), padding='same', activation='relu'))
 
-    model.fit(train_images, train_labels, epochs=15)
+    model.add(MaxPool2D(pool_size=(3, 3)))
+    model.add(Dropout(0.25))
 
-    test_loss, test_acc = model.evaluate(train_images, train_labels, verbose=2)
+    # 扁平层
+    model.add(Flatten())
+    # 全连接层激活函数relu
+    model.add(Dense(256, activation='relu'))
+    model.add(Dropout(0.25))
+    # 全连接层激活函数softmax
+    model.add(Dense(len(util.class_names), activation='softmax'))
 
-    print('\nTest accuracy:', test_acc)
+    model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+    checkpoint_path = "training/cp.ckpt"
+    # Create a callback that saves the model's weights
+    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+                                                     save_weights_only=True,
+                                                     verbose=1)
+
+    model.load_weights(checkpoint_path)
+    if epoch_num > 0:
+        model.fit(train_images, train_labels, epochs=epoch_num, callbacks=[cp_callback])
+        test_loss, test_acc = model.evaluate(train_images, train_labels, verbose=2)
+        print('\nTest accuracy:', test_acc)
 
     global probability_model
     probability_model = tf.keras.Sequential([model,
@@ -82,6 +110,8 @@ def train():
 
 
 def predict(imgs):
+    imgs = np.array(imgs)
+    imgs = imgs.reshape((imgs.shape[0], imgs.shape[1], imgs.shape[2], 1))
     global probability_model
     return probability_model.predict(imgs)
 
